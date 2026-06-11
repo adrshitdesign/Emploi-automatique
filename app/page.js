@@ -5,8 +5,10 @@ import "./globals.css";
 
 const STORAGE_TRACKER = "jobflow_tracker";
 const STORAGE_PROFIL = "jobflow_profil";
+const STORAGE_OFFRES = "jobflow_offres";
 
 const DEFAULT_PROFIL = {
+  nom: "Adr",
   titre: "Graphiste · Motion designer · Monteur vidéo · Directeur artistique",
   ville: "Paris",
   resume:
@@ -45,8 +47,11 @@ export default function Home() {
   }
 
   function addToTracker(offre) {
+    // Évite les doublons : si l'offre est déjà suivie, on ne fait rien.
+    if (offre.id && tracker.some((t) => t.offreId === offre.id)) return;
     const entry = {
       id: Date.now().toString(),
+      offreId: offre.id || "",
       boite: offre.entreprise || "",
       poste: offre.intitule || "",
       statut: "Envoyée",
@@ -89,20 +94,23 @@ export default function Home() {
         </button>
       </div>
 
-      {tab === "offres" && (
-        <OffresTab profil={profil} onAdd={addToTracker} />
-      )}
-      {tab === "tracker" && (
+      {/* Les trois onglets restent montés en permanence (display none/block)
+          pour conserver leur état — notamment les offres récupérées et leurs
+          scores — quand on navigue d'un onglet à l'autre. */}
+      <div style={{ display: tab === "offres" ? "block" : "none" }}>
+        <OffresTab profil={profil} onAdd={addToTracker} tracker={tracker} />
+      </div>
+      <div style={{ display: tab === "tracker" ? "block" : "none" }}>
         <TrackerTab tracker={tracker} saveTracker={saveTracker} />
-      )}
-      {tab === "profil" && (
+      </div>
+      <div style={{ display: tab === "profil" ? "block" : "none" }}>
         <ProfilTab profil={profil} saveProfil={saveProfil} />
-      )}
+      </div>
     </div>
   );
 }
 
-function OffresTab({ profil, onAdd }) {
+function OffresTab({ profil, onAdd, tracker }) {
   const [motsCles, setMotsCles] = useState(
     "motion designer monteur vidéo graphiste"
   );
@@ -117,6 +125,60 @@ function OffresTab({ profil, onAdd }) {
   const [meta, setMeta] = useState(null);
   const [scores, setScores] = useState({});
   const [scoring, setScoring] = useState({});
+  const [hydrated, setHydrated] = useState(false);
+
+  // Au chargement : on restaure la dernière recherche depuis le navigateur.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_OFFRES);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.motsCles != null) setMotsCles(s.motsCles);
+        if (s.commune != null) setCommune(s.commune);
+        if (s.typeContrat != null) setTypeContrat(s.typeContrat);
+        if (s.publieeDepuis != null) setPublieeDepuis(s.publieeDepuis);
+        if (typeof s.scoreMin === "number") setScoreMin(s.scoreMin);
+        if (s.motsExclus != null) setMotsExclus(s.motsExclus);
+        if (Array.isArray(s.offres)) setOffres(s.offres);
+        if (s.meta) setMeta(s.meta);
+        if (s.scores) setScores(s.scores);
+      }
+    } catch (e) {}
+    setHydrated(true);
+  }, []);
+
+  // À chaque changement : on enregistre offres, scores et filtres. Le garde
+  // "hydrated" évite d'écraser la sauvegarde avec l'état vide initial.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(
+        STORAGE_OFFRES,
+        JSON.stringify({
+          motsCles,
+          commune,
+          typeContrat,
+          publieeDepuis,
+          scoreMin,
+          motsExclus,
+          offres,
+          meta,
+          scores,
+        })
+      );
+    } catch (e) {}
+  }, [
+    hydrated,
+    motsCles,
+    commune,
+    typeContrat,
+    publieeDepuis,
+    scoreMin,
+    motsExclus,
+    offres,
+    meta,
+    scores,
+  ]);
 
   async function chercher() {
     setLoading(true);
@@ -362,12 +424,15 @@ function OffresTab({ profil, onAdd }) {
               </a>
               <DocButton type="lettre" offre={offre} profil={profil} />
               <DocButton type="cv" offre={offre} profil={profil} />
-              <button
-                className="btn btn-sm"
-                onClick={() => onAdd(offre)}
-              >
-                + Tracker
-              </button>
+              {(tracker || []).some((t) => t.offreId === offre.id) ? (
+                <button className="btn btn-sm" disabled style={{ opacity: 0.6 }}>
+                  ✓ Ajoutée
+                </button>
+              ) : (
+                <button className="btn btn-sm" onClick={() => onAdd(offre)}>
+                  + Tracker
+                </button>
+              )}
             </div>
           </div>
         );
@@ -428,6 +493,22 @@ function DocButton({ type, offre, profil }) {
     doc.save(`CV_${nom}_${poste}.pdf`);
   }
 
+  async function downloadLettrePdf() {
+    if (!lettre) return;
+    const { genererLettrePdf } = await import("../lib/lettrepdf");
+    const doc = genererLettrePdf(lettre, {
+      nom: profil.nom || "",
+      titre: profil.titre || "",
+      ville: profil.ville || "",
+      poste: offre.intitule || "",
+      entreprise: offre.entreprise || "",
+    });
+    const boite = (offre.entreprise || "offre")
+      .replace(/\s+/g, "_")
+      .slice(0, 20);
+    doc.save(`Lettre_${boite}.pdf`);
+  }
+
   const label = type === "lettre" ? "Lettre" : "CV adapté";
 
   return (
@@ -445,13 +526,17 @@ function DocButton({ type, offre, profil }) {
       {lettre && (
         <div style={{ width: "100%" }}>
           <div className="output-box">{lettre}</div>
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ marginTop: 8 }}
-            onClick={() => navigator.clipboard.writeText(lettre)}
-          >
-            Copier
-          </button>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => navigator.clipboard.writeText(lettre)}
+            >
+              Copier
+            </button>
+            <button className="btn btn-sm" onClick={downloadLettrePdf}>
+              Télécharger le PDF
+            </button>
+          </div>
         </div>
       )}
 
@@ -467,6 +552,18 @@ function DocButton({ type, offre, profil }) {
                   {cv.experiences.map((e, i) => (
                     <li key={i}>
                       {e.poste} — {e.organisation} {e.periode ? `(${e.periode})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {cv.benevolat?.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <strong style={{ fontSize: 13 }}>Bénévolat :</strong>
+                <ul className="pf-list">
+                  {cv.benevolat.map((b, i) => (
+                    <li key={i}>
+                      {b.poste} — {b.organisation} {b.periode ? `(${b.periode})` : ""}
                     </li>
                   ))}
                 </ul>
@@ -603,6 +700,20 @@ function ProfilTab({ profil, saveProfil }) {
         de lettres. Remplis-le une fois.
       </div>
       <div className="card">
+        <div className="field">
+          <label>Nom</label>
+          <input
+            value={local.nom || ""}
+            onChange={(e) => setLocal({ ...local, nom: e.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label>Ville</label>
+          <input
+            value={local.ville || ""}
+            onChange={(e) => setLocal({ ...local, ville: e.target.value })}
+          />
+        </div>
         <div className="field">
           <label>Titre / accroche</label>
           <input

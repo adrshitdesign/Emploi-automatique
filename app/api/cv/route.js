@@ -21,7 +21,16 @@ ${offre.intitule} chez ${offre.entreprise}
 ${offre.description ? `\nDescription du poste :\n${offre.description.slice(0, 1800)}` : ""}
 
 Réécris et réorganise le CV pour maximiser le match avec cette offre précise.
-Règles : mets en avant en premier ce qui matche le poste, reformule l'accroche pour parler au besoin de l'entreprise, et NE JAMAIS inventer d'expérience, de compétence, de diplôme ou de date absents du CV source.
+Le CV final doit tenir sur UNE SEULE PAGE A4 : sois sélectif et dense.
+
+Structure de la page : colonne gauche = expériences PROFESSIONNELLES et formations ; colonne droite = contact, compétences et BÉNÉVOLAT/ENGAGEMENTS associatifs.
+
+Règles importantes :
+- Mets en avant en premier ce qui matche le poste, et reformule l'accroche (2-3 phrases) pour parler au besoin de l'entreprise.
+- NE JAMAIS inventer d'expérience, de compétence, de diplôme ou de date absents du CV source. Tu peux reformuler et détailler ce qui existe.
+- "experiences" = uniquement les expériences PROFESSIONNELLES (emplois, freelance, missions rémunérées), les plus pertinentes en premier. Maximum 4, pour tenir sur une page. Chaque "details" : 1 à 2 phrases concrètes (missions, outils, résultats).
+- "benevolat" = les expériences ASSOCIATIVES, bénévoles ou d'engagement qui valorisent le profil. Garde-les COURTES (poste + structure + période, pas de details longs). Ne mets jamais une expérience pro ici, et ne mets jamais du bénévolat dans "experiences".
+- "competences" : 8 à 12 compétences pertinentes.
 
 Réponds en JSON strict avec cette structure exacte :
 {
@@ -29,7 +38,10 @@ Réponds en JSON strict avec cette structure exacte :
   "titre": "intitulé de poste court",
   "accroche": "2-3 phrases d'accroche adaptées à l'offre",
   "experiences": [
-    { "poste": "...", "organisation": "...", "periode": "...", "details": "1-2 phrases" }
+    { "poste": "...", "organisation": "...", "periode": "...", "details": "1-2 phrases concrètes" }
+  ],
+  "benevolat": [
+    { "poste": "...", "organisation": "...", "periode": "..." }
   ],
   "formations": [
     { "diplome": "...", "etablissement": "...", "periode": "..." }
@@ -38,11 +50,11 @@ Réponds en JSON strict avec cette structure exacte :
   "contact": { "email": "...", "ville": "...", "telephone": "..." }
 }
 
-Inclus au maximum 4 expériences et 3 formations, les plus pertinentes en premier. Si une information n'existe pas dans le CV source, mets une chaîne vide. Réponds UNIQUEMENT avec le JSON, sans backticks ni texte autour.`;
+Maximum 4 expériences pro, 5 bénévolats, 3 formations. Si une information n'existe pas dans le CV source, mets une chaîne vide ou un tableau vide. Réponds UNIQUEMENT avec le JSON, sans backticks ni texte autour.`;
 
     const text = await callClaude({
       prompt,
-      maxTokens: 1800,
+      maxTokens: 2600,
       model: "claude-sonnet-4-6",
     });
     const data = parseJsonResponse(text);
